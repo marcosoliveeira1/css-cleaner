@@ -1,0 +1,56 @@
+@host = http://127.0.0.1:8787
+
+# Carregue a variável API_KEY do seu arquivo .dev.vars
+@api_key =1234
+
+###
+# [OK] Envia HTML e CSS para o serviço de purge
+# Retorna o CSS otimizado. Requer autenticação.
+POST {{host}}/purge
+Content-Type: application/json
+Authorization: Bearer {{api_key}}
+
+{
+  "html": "<html><body><div class=\"usada\">Olá Mundo</div></body></html>",
+  "css": ".usada { font-weight: bold; } .nao-usada { color: red; }"
+}
+
+###
+# [OK] Envia HTML e busca o CSS de uma URL externa (ex: CDN do Tailwind)
+POST {{host}}/purge
+Content-Type: application/json
+Authorization: Bearer {{api_key}}
+
+{
+  "html": "<html><body><h1 class=\"text-4xl font-bold underline\">Título com Tailwind</h1></body></html>",
+  "css": "https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
+}
+
+###
+# [ERRO] Tentativa de acesso à rota /purge sem autenticação
+# Deve retornar 401 Unauthorized
+POST {{host}}/purge
+Content-Type: application/json
+
+{
+  "html": "<html><body><div>Olá</div></body></html>",
+  "css": "div { color: blue; }"
+}
+
+###
+# [ERRO] Tentativa de acesso à rota /purge com token inválido
+# Deve retornar 401 Unauthorized
+POST {{host}}/purge
+Content-Type: application/json
+Authorization: Bearer token-invalido
+
+{
+  "html": "<html><body><div>Olá</div></body></html>",
+  "css": "div { color: blue; }"
+}
+
+
+###
+# [OK] Acessa a rota de mensagem de exemplo
+# Não requer autenticação
+GET {{host}}/docs
