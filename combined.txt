@@ -1,0 +1,351 @@
+--- START: wrangler.jsonc ---
+/**
+ * For more details on how to configure Wrangler, refer to:
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ */
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "css-purger",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-08-22",
+	"observability": {
+		"enabled": true
+	},
+	"compatibility_flags": ["nodejs_compat"]
+	/**
+	 * Smart Placement
+	 * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
+	 */
+	// "placement": { "mode": "smart" }
+	/**
+	 * Bindings
+	 * Bindings allow your Worker to interact with resources on the Cloudflare Developer Platform, including
+	 * databases, object storage, AI inference, real-time communication and more.
+	 * https://developers.cloudflare.com/workers/runtime-apis/bindings/
+	 */
+	/**
+	 * Environment Variables
+	 * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
+	 */
+	// "vars": { "MY_VARIABLE": "production_value" }
+	/**
+	 * Note: Use secrets to store sensitive data.
+	 * https://developers.cloudflare.com/workers/configuration/secrets/
+	 */
+	/**
+	 * Static Assets
+	 * https://developers.cloudflare.com/workers/static-assets/binding/
+	 */
+	// "assets": { "directory": "./public/", "binding": "ASSETS" }
+	/**
+	 * Service Bindings (communicate between multiple Workers)
+	 * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
+	 */
+	// "services": [{ "binding": "MY_SERVICE", "service": "my-service" }]
+}
+--- END: wrangler.jsonc ---
+
+--- START: README.md ---
+```txt
+npm install
+npm run dev
+```
+
+```txt
+npm run deploy
+```
+
+[For generating/synchronizing types based on your Worker configuration run](https://developers.cloudflare.com/workers/wrangler/commands/#types):
+
+```txt
+npm run cf-typegen
+```
+
+Pass the `CloudflareBindings` as generics when instantiation `Hono`:
+
+```ts
+// src/index.ts
+const app = new Hono<{ Bindings: CloudflareBindings }>()
+```
+
+--- END: README.md ---
+
+--- START: .gitignore ---
+# prod
+dist/
+
+# dev
+.yarn/
+!.yarn/releases
+.vscode/*
+!.vscode/launch.json
+!.vscode/*.code-snippets
+.idea/workspace.xml
+.idea/usage.statistics.xml
+.idea/shelf
+
+# deps
+node_modules/
+.wrangler
+
+# env
+.env
+.env.production
+.dev.vars
+
+# logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# misc
+.DS_Store
+
+.dev.vars*
+!.dev.vars.example
+.env*
+!.env.example
+
+--- END: .gitignore ---
+
+--- START: package.json ---
+{
+	"name": "css-purger",
+	"type": "module",
+	"scripts": {
+		"dev": "wrangler dev",
+		"deploy": "wrangler deploy --minify",
+		"cf-typegen": "wrangler types --env-interface CloudflareBindings"
+	},
+	"dependencies": {
+		"hono": "^4.9.4",
+		"postcss": "^8.5.6",
+		"purgecss": "^7.0.2",
+		"tailwind": "^4.0.0",
+		"tailwindcss": "^4.1.12"
+	},
+	"devDependencies": {
+		"wrangler": "^4.32.0"
+	}
+}
+--- END: package.json ---
+
+--- START: tsconfig.json ---
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "lib": [
+      "ESNext"
+    ],
+    "jsx": "react-jsx",
+    "jsxImportSource": "hono/jsx",
+    "types": [
+        "./worker-configuration.d.ts"
+    ]
+  },
+}
+--- END: tsconfig.json ---
+
+--- START: src/middlewares/auth.ts ---
+import type { Context, Next,  } from "hono";
+
+export const authMiddleware = async (c: Context<{ Bindings: { API_KEY: string } }>, next: Next) => {
+    const auth = c.req.header("Authorization");
+    if (!auth || auth !== `Bearer ${c.env.API_KEY}`) {
+        return c.json({ error: "Não autorizado" }, 401);
+    }
+    await next();
+};
+--- END: src/middlewares/auth.ts ---
+
+--- START: src/types.ts ---
+export interface CSSService {
+    generateCSS(html: string): Promise<string>;
+}
+
+export interface TailwindConfig {
+    content?: string[];
+    theme?: Record<string, any>;
+    plugins?: any[];
+    safelist?: string[];
+}
+--- END: src/types.ts ---
+
+--- START: src/index.ts ---
+import { Hono } from "hono";
+import { authMiddleware } from "./middlewares/auth";
+import { TailwindCSSService } from "./services/tailwind-css.service";
+import { cssRoute } from "./routes/css";
+
+type Bindings = { API_KEY: string };
+
+const app = new Hono<{ Bindings: Bindings }>();
+
+// Middlewares globais
+app.use("*", authMiddleware);
+
+// Default Tailwind configuration
+const defaultTailwindConfig = {
+  theme: {
+    extend: {
+      // Add any custom theme extensions here
+    }
+  },
+  plugins: [
+    // Add any Tailwind plugins here if needed
+  ],
+  safelist: [
+    // Add any classes that should always be included
+    'text-red-500',
+    'bg-blue-500',
+    // Add more as needed
+  ]
+};
+
+// Injeção de dependência
+const tailwindService = new TailwindCSSService(defaultTailwindConfig);
+
+// Rotas
+app.route("/css", cssRoute(tailwindService));
+
+// Root endpoint with API info
+app.get("/", (c) => {
+  return c.json({
+    name: "Tailwind CSS JIT API",
+    version: "1.0.0",
+    endpoints: {
+      "POST /css": "Generate CSS from HTML using Tailwind JIT",
+      "GET /": "Test endpoint"
+    }
+  });
+});
+
+
+export default app;
+--- END: src/index.ts ---
+
+--- START: src/routes/css.ts ---
+import { Hono } from "hono";
+import { CSSService, TailwindConfig } from "../types";
+import { TailwindCSSService } from "../services/tailwind-css.service";
+
+export const cssRoute = (service: CSSService) => {
+  const app = new Hono();
+
+  app.post("/", async (c) => {
+    try {
+
+      let body: {
+        slug?: string;
+        html: string;
+        config?: TailwindConfig;
+      };
+
+      try {
+        body = await c.req.json();
+      } catch (err) {
+        return c.json({ error: 'Invalid JSON body' }, 400);
+      }
+      
+      console.log("Received request body:", body);
+      const { html, config } = body;
+      console.log({ html, config })
+
+      if (!html) {
+        return c.json(
+          { error: "Parâmetro faltando: html é obrigatório" },
+          400
+        );
+      }
+
+      let generatedCSS: string;
+
+      // If custom config is provided and service is TailwindCSSService, use it
+      if (config && service instanceof TailwindCSSService) {
+        generatedCSS = await service.generateCSSWithConfig(html, config);
+      } else {
+        generatedCSS = await service.generateCSS(html);
+      }
+
+      return new Response(generatedCSS, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/css",
+          "Cache-Control": "public, max-age=3600" // Cache for 1 hour
+        },
+      });
+    } catch (err: any) {
+      console.error("Erro ao gerar CSS:", err);
+      return c.json({ error: "Erro interno ao gerar CSS" }, 500);
+    }
+  });
+
+  return app;
+};
+--- END: src/routes/css.ts ---
+
+--- START: src/services/tailwind-css.service.ts ---
+import { CSSService, TailwindConfig } from "../types";
+import postcss from "postcss";
+import tailwindcss from "tailwindcss";
+
+export class TailwindCSSService implements CSSService {
+    private config: TailwindConfig;
+
+    constructor(config?: TailwindConfig) {
+        this.config = {
+            content: [],
+            theme: {},
+            plugins: [],
+            safelist: [],
+            ...config
+        };
+    }
+
+    async generateCSS(html: string): Promise<string> {
+        // Base Tailwind CSS with all utilities
+        const baseCSS = `
+            @tailwind base;
+            @tailwind components;
+            @tailwind utilities;
+        `;
+
+        // Configure Tailwind to scan the provided HTML content
+        const tailwindConfig = {
+            ...this.config,
+            content: [{ raw: html, extension: 'html' }],
+            // JIT mode is enabled by default in Tailwind CSS v3+
+            mode: 'jit' as const,
+        };
+
+        try {
+            // Process CSS with PostCSS and Tailwind
+            const result = await postcss([
+                tailwindcss(tailwindConfig)
+            ]).process(baseCSS, { 
+                from: undefined,
+                to: undefined 
+            });
+
+            return result.css;
+        } catch (error) {
+            console.error("Erro ao processar Tailwind CSS:", error);
+            throw new Error(`Erro ao gerar CSS: ${error}`);
+        }
+    }
+
+    // Method to generate CSS with custom Tailwind config
+    async generateCSSWithConfig(html: string, customConfig: TailwindConfig): Promise<string> {
+        const tempService = new TailwindCSSService(customConfig);
+        return await tempService.generateCSS(html);
+    }
+}
+--- END: src/services/tailwind-css.service.ts ---
