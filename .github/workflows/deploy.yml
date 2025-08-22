@@ -22,11 +22,11 @@ jobs:
       # Step 3: Publish Worker
       - name: Publish to Cloudflare Workers
         env:
-          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           API_KEY: ${{ secrets.API_KEY }}
         run: |
           # Optional: check Wrangler version
           wrangler --version
           
           # Publish worker
-          wrangler publish
+          wrangler deploy
