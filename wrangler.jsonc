@@ -7,10 +7,7 @@
 	"name": "css-purger",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-08-22",
-	"assets": {
-		"binding": "ASSETS",
-		"directory": "./public"
-	},
+
 	"observability": {
 		"enabled": true
 	},
