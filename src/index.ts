@@ -1,21 +1,30 @@
-import { Hono } from "hono";
-import { authMiddleware } from "./middlewares/auth";
+import { swaggerUI } from '@hono/swagger-ui';
+import { OpenAPIHono } from '@hono/zod-openapi';
 import { PurgeCSSWorkerService } from "./services/purgecss";
 import { purgeRoute } from "./routes/purge";
-import { messageRoute } from "./routes/message";
 
 type Bindings = { API_KEY: string };
 
-const app = new Hono<{ Bindings: Bindings }>();
+const app = new OpenAPIHono<{ Bindings: Bindings }>();
 
-// Middlewares globais
-app.use("*", authMiddleware);
+app.openAPIRegistry.registerComponent('securitySchemes', 'Bearer', {
+  type: 'http',
+  scheme: 'bearer',
+});
 
-// Injeção de dependência
 const purgeCSSService = new PurgeCSSWorkerService();
 
-// Rotas
 app.route("/purge", purgeRoute(purgeCSSService));
-app.route("/message", messageRoute);
+
+app.doc('/openapi.json', {
+  openapi: '3.1.0',
+  info: {
+    title: 'CSS Purger API',
+    version: 'v1',
+    description: 'Uma API para remover CSS não utilizado de conteúdo HTML.',
+  },
+});
+
+app.get('/', swaggerUI({ url: '/openapi.json' }));
 
 export default app;
